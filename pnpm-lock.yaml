@@ -49,6 +49,12 @@ importers:
         specifier: ^19.0.0
         version: 19.2.3(@types/react@19.2.15)
 
+  packages/adapters:
+    dependencies:
+      '@open-memory-gateway/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/cli:
     dependencies:
       '@open-memory-gateway/core':
