@@ -36,6 +36,10 @@ type RawMemoryRow = {
   search_text: string;
 };
 
+function escapeLikePattern(query: string): string {
+  return query.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 export class SQLiteMemoryIndex {
   private readonly db: Database.Database;
 
@@ -122,12 +126,17 @@ export class SQLiteMemoryIndex {
   }
 
   search(query: string, status?: MemoryStatus): IndexedMemoryRow[] {
-    const normalized = `%${query.trim().toLowerCase()}%`;
+    const trimmedQuery = query.trim().toLowerCase();
+    if (!trimmedQuery) {
+      return [];
+    }
+
+    const normalized = `%${escapeLikePattern(trimmedQuery)}%`;
     const stmt = status
       ? this.db.prepare(
-          "SELECT * FROM memories WHERE status = ? AND lower(search_text) LIKE ? ORDER BY updated_at DESC",
+          "SELECT * FROM memories WHERE status = ? AND lower(search_text) LIKE ? ESCAPE '\\' ORDER BY updated_at DESC",
         )
-      : this.db.prepare("SELECT * FROM memories WHERE lower(search_text) LIKE ? ORDER BY updated_at DESC");
+      : this.db.prepare("SELECT * FROM memories WHERE lower(search_text) LIKE ? ESCAPE '\\' ORDER BY updated_at DESC");
     const rows = status ? stmt.all(status, normalized) : stmt.all(normalized);
     return rows.map((row) => this.mapRow(row as RawMemoryRow));
   }
