@@ -1,9 +1,12 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
 import { hashMemoryContent } from "./hash";
 import { memoryBaseDir, memoryFilePath, statusDirName } from "./paths";
 import { MemoryFrontmatterSchema, type MemoryRecord, type MemoryStatus } from "./schema";
+
+const MEMORY_ID_PATTERN = /^mem_[0-9]{8}_[a-z0-9]+$/;
 
 export interface MarkdownMemoryStoreOptions {
   rootDir: string;
@@ -21,14 +24,14 @@ export class MarkdownMemoryStore {
     );
     await mkdir(path.dirname(filePath), { recursive: true });
 
+    const content = record.content.trim();
+    const file = matter.stringify(`${content}\n`, parsedFrontmatter);
     const previous = await this.findPath(parsedFrontmatter.id);
+    await this.writeFileAtomically(filePath, file);
+
     if (previous && previous !== filePath) {
       await rm(previous, { force: true });
     }
-
-    const content = record.content.trim();
-    const file = matter.stringify(`${content}\n`, parsedFrontmatter);
-    await writeFile(filePath, file, "utf8");
 
     return {
       frontmatter: parsedFrontmatter,
@@ -40,11 +43,16 @@ export class MarkdownMemoryStore {
   }
 
   async read(id: string): Promise<MemoryRecord> {
+    this.validateId(id);
     const filePath = await this.findPath(id);
     if (!filePath) {
       throw new Error(`Memory not found: ${id}`);
     }
 
+    return this.readFilePath(filePath);
+  }
+
+  private async readFilePath(filePath: string): Promise<MemoryRecord> {
     const raw = await readFile(filePath, "utf8");
     const parsed = matter(raw);
     const frontmatter = MemoryFrontmatterSchema.parse(parsed.data);
@@ -66,8 +74,7 @@ export class MarkdownMemoryStore {
       const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
       for (const entry of entries) {
         if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
-        const id = entry.name.slice(0, -3);
-        const record = await this.read(id);
+        const record = await this.readFilePath(path.join(dir, entry.name));
         if (record.frontmatter.status === currentStatus) {
           records.push(record);
         }
@@ -78,16 +85,43 @@ export class MarkdownMemoryStore {
   }
 
   private async findPath(id: string): Promise<string | undefined> {
+    this.validateId(id);
     const dirs = ["inbox", "active", "archived"];
     for (const dir of dirs) {
       const filePath = path.join(memoryBaseDir(this.options.rootDir), dir, `${id}.md`);
       try {
         await readFile(filePath, "utf8");
         return filePath;
-      } catch {
+      } catch (error) {
+        if (!isNotFoundError(error)) {
+          throw error;
+        }
         continue;
       }
     }
     return undefined;
   }
+
+  private async writeFileAtomically(filePath: string, file: string): Promise<void> {
+    const dir = path.dirname(filePath);
+    const tempPath = path.join(dir, `.${path.basename(filePath)}.${randomUUID()}.tmp`);
+
+    try {
+      await writeFile(tempPath, file, "utf8");
+      await rename(tempPath, filePath);
+    } catch (error) {
+      await rm(tempPath, { force: true });
+      throw error;
+    }
+  }
+
+  private validateId(id: string): void {
+    if (!MEMORY_ID_PATTERN.test(id)) {
+      throw new Error(`Invalid memory id: ${id}`);
+    }
+  }
+}
+
+function isNotFoundError(error: unknown): error is { code: "ENOENT" } {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
