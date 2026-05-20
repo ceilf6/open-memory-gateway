@@ -1,0 +1,19 @@
+{
+  "name": "@open-memory-gateway/mcp-server",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "open-memory-gateway-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/mcp-server/test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "@open-memory-gateway/core": "workspace:*",
+    "zod": "^3.25.0"
+  }
+}
