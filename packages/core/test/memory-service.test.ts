@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -61,6 +61,19 @@ describe("MemoryService", () => {
     expect(second.possibleDuplicate).toBe(true);
   });
 
+  it("keeps duplicate hint after approving duplicate memory", async () => {
+    const service = createService();
+    await service.capture({ content: "Duplicate approval memory" });
+    const second = await service.capture({ content: " Duplicate   approval memory " });
+
+    const approved = await service.approve(second.frontmatter.id);
+    const active = await service.list("active");
+
+    expect(approved.possibleDuplicate).toBe(true);
+    expect(active[0]?.id).toBe(second.frontmatter.id);
+    expect(active[0]?.possibleDuplicate).toBe(true);
+  });
+
   it("searches active memories", async () => {
     const service = createService();
     const draft = await service.capture({ content: "Remember the OpenClaw memory workflow." });
@@ -114,9 +127,62 @@ describe("MemoryService", () => {
     expect(await service.search("Rebuild", "active")).toHaveLength(1);
   });
 
+  it("recomputes duplicate groups when rebuilding the index", async () => {
+    const service = createService();
+    const first = await service.capture({ content: "Duplicate rebuild memory" });
+    const second = await service.capture({ content: " Duplicate   rebuild memory " });
+
+    await service.rebuildIndex();
+
+    const rows = await service.list("draft");
+    const duplicateRows = rows.filter((row) => row.id === first.frontmatter.id || row.id === second.frontmatter.id);
+    expect(duplicateRows).toHaveLength(2);
+    expect(duplicateRows.every((row) => row.possibleDuplicate)).toBe(true);
+  });
+
   it("rejects empty capture content", async () => {
     const service = createService();
 
     await expect(service.capture({ content: "   " })).rejects.toThrow("Memory content is required");
+  });
+
+  it("rejects empty update content without erasing existing content", async () => {
+    const service = createService();
+    const draft = await service.capture({ content: "Keep existing content." });
+
+    await expect(service.update(draft.frontmatter.id, { content: "   " })).rejects.toThrow(
+      "Memory content is required",
+    );
+
+    const results = await service.search("Keep existing");
+    expect(results).toHaveLength(1);
+    expect(results[0]?.id).toBe(draft.frontmatter.id);
+  });
+
+  it("reads markdown records before clearing the index during rebuild", async () => {
+    const service = createService();
+    await service.capture({ content: "Survive failed rebuild." });
+    const inboxDir = path.join(root, "memory", "inbox");
+    await mkdir(inboxDir, { recursive: true });
+    await writeFile(
+      path.join(inboxDir, "malformed.md"),
+      `---
+id: not-a-memory-id
+status: draft
+scope: personal
+source: manual
+tags: []
+createdAt: 2026-05-20T10:00:00+08:00
+updatedAt: 2026-05-20T10:00:00+08:00
+---
+Malformed memory.
+`,
+      "utf8",
+    );
+
+    await expect(service.rebuildIndex()).rejects.toThrow();
+
+    const results = await service.search("Survive failed");
+    expect(results).toHaveLength(1);
   });
 });

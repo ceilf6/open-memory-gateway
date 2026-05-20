@@ -57,7 +57,11 @@ export class MemoryService {
 
   async update(id: string, input: UpdateMemoryInput): Promise<MemoryRecord> {
     const existing = await this.store.read(id);
-    const content = input.content?.trim() ?? existing.content;
+    const content = input.content === undefined ? existing.content : input.content.trim();
+    if (!content) {
+      throw new Error("Memory content is required");
+    }
+
     const updated: MemoryRecord = {
       frontmatter: {
         ...existing.frontmatter,
@@ -72,8 +76,8 @@ export class MemoryService {
     };
 
     const record = await this.store.write(updated);
-    this.index.upsert(record);
-    return record;
+    await this.rebuildIndex();
+    return this.withIndexedDuplicateFlag(record);
   }
 
   async approve(id: string): Promise<MemoryRecord> {
@@ -97,15 +101,46 @@ export class MemoryService {
   }
 
   async rebuildIndex(): Promise<number> {
-    this.index.clear();
     const records = await this.store.list();
-    for (const record of records) {
+    const indexedRecords = this.withDuplicateFlags(records);
+
+    this.index.clear();
+    for (const record of indexedRecords) {
       this.index.upsert(record);
     }
-    return records.length;
+    return indexedRecords.length;
   }
 
   close(): void {
     this.index.close();
+  }
+
+  private withDuplicateFlags(records: MemoryRecord[]): MemoryRecord[] {
+    const counts = new Map<string, number>();
+    const recordsWithHashes = records.map((record) => ({
+      ...record,
+      contentHash: record.contentHash ?? hashMemoryContent(record.content),
+    }));
+
+    for (const record of recordsWithHashes) {
+      counts.set(record.contentHash, (counts.get(record.contentHash) ?? 0) + 1);
+    }
+
+    return recordsWithHashes.map((record) => ({
+      ...record,
+      possibleDuplicate: (counts.get(record.contentHash) ?? 0) > 1,
+    }));
+  }
+
+  private withIndexedDuplicateFlag(record: MemoryRecord): MemoryRecord {
+    const indexed = this.index
+      .list(record.frontmatter.status)
+      .find((row) => row.id === record.frontmatter.id);
+
+    return {
+      ...record,
+      contentHash: indexed?.contentHash ?? record.contentHash,
+      possibleDuplicate: indexed?.possibleDuplicate ?? false,
+    };
   }
 }
