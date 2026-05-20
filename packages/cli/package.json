@@ -1,0 +1,21 @@
+{
+  "name": "@open-memory-gateway/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "memory": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/cli/test"
+  },
+  "dependencies": {
+    "@open-memory-gateway/core": "workspace:*",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "execa": "^9.5.0"
+  }
+}
