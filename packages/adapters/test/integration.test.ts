@@ -59,7 +59,7 @@ describe("adapter integration with MemoryService", () => {
     );
   });
 
-  it("propagates adapter-level errors to the caller", async () => {
+  it("propagates adapter-internal errors (no MemoryService) to the caller", async () => {
     const failingAdapter = defineMemoryCaptureAdapter({
       name: "failing-adapter",
       async capture() {
