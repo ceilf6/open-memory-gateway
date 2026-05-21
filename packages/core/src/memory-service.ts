@@ -11,12 +11,12 @@ import {
 } from "./schema";
 import { SQLiteMemoryIndex, type IndexedMemoryRow } from "./sqlite-index";
 
-const VALID_TRANSITIONS: Record<MemoryStatus, MemoryStatus[]> = {
+const VALID_TRANSITIONS: Record<MemoryStatus, readonly MemoryStatus[]> = {
   draft: ["active", "rejected"],
   active: ["archived"],
   archived: [],
   rejected: [],
-};
+} as const;
 
 export interface MemoryServiceOptions {
   rootDir: string;
@@ -161,6 +161,10 @@ export class MemoryService {
     };
   }
 
+  /**
+   * Wraps store.read() to throw MemoryNotFoundError at the service layer.
+   * Implicit contract: markdown-store throws Error with message containing "Memory not found".
+   */
   private async readOrThrowNotFound(id: string): Promise<MemoryRecord> {
     try {
       return await this.store.read(id);
