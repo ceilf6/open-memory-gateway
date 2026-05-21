@@ -22,6 +22,8 @@ export interface MemoryToolHandlers {
   search_memories(input: { query: string; status?: MemoryStatus }): Promise<IndexedMemoryRow[]>;
   update_memory(input: UpdateMemoryInput & { id: string }): Promise<MemoryRecord>;
   approve_memory(input: { id: string }): Promise<MemoryRecord>;
+  reject_memory(input: { id: string }): Promise<MemoryRecord>;
+  archive_memory(input: { id: string }): Promise<MemoryRecord>;
   close(): void;
 }
 
@@ -75,6 +77,14 @@ export function createToolHandlers(options: ToolHandlerOptions): MemoryToolHandl
     approve_memory(input: { id: string }): Promise<MemoryRecord> {
       const parsed = idOnlySchema.parse(input);
       return service.approve(parsed.id);
+    },
+    reject_memory(input: { id: string }): Promise<MemoryRecord> {
+      const parsed = idOnlySchema.parse(input);
+      return service.reject(parsed.id);
+    },
+    archive_memory(input: { id: string }): Promise<MemoryRecord> {
+      const parsed = idOnlySchema.parse(input);
+      return service.archive(parsed.id);
     },
   } as MemoryToolHandlers;
 
@@ -136,6 +146,24 @@ export function createServer(rootDir = process.env.OPEN_MEMORY_ROOT ?? process.c
       inputSchema: idOnlySchema.shape,
     },
     async (input) => toMcpResult(await handlers.approve_memory(input)),
+  );
+
+  server.registerTool(
+    "reject_memory",
+    {
+      description: "Reject a draft memory and mark it rejected.",
+      inputSchema: idOnlySchema.shape,
+    },
+    async (input) => toMcpResult(await handlers.reject_memory(input)),
+  );
+
+  server.registerTool(
+    "archive_memory",
+    {
+      description: "Archive an active memory for long-term storage.",
+      inputSchema: idOnlySchema.shape,
+    },
+    async (input) => toMcpResult(await handlers.archive_memory(input)),
   );
 
   return server;
