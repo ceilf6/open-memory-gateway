@@ -19,8 +19,10 @@ describe("MCP tool handlers", () => {
     const handlers = createToolHandlers({ rootDir: root });
     expect(Object.keys(handlers).sort()).toEqual([
       "approve_memory",
+      "archive_memory",
       "capture_memory",
       "list_memories",
+      "reject_memory",
       "search_memories",
       "update_memory",
     ]);
@@ -43,6 +45,35 @@ describe("MCP tool handlers", () => {
 
     const results = await handlers.search_memories({ query: "integration", status: "active" });
     expect(results).toHaveLength(1);
+    handlers.close();
+  });
+
+  it("rejects a draft memory through handler", async () => {
+    const handlers = createToolHandlers({ rootDir: root });
+    const draft = await handlers.capture_memory({
+      content: "Memory to reject.",
+      source: "mcp-test",
+    });
+
+    expect(draft.frontmatter.status).toBe("draft");
+
+    const rejected = await handlers.reject_memory({ id: draft.frontmatter.id });
+    expect(rejected.frontmatter.status).toBe("rejected");
+    handlers.close();
+  });
+
+  it("archives an active memory through handler", async () => {
+    const handlers = createToolHandlers({ rootDir: root });
+    const draft = await handlers.capture_memory({
+      content: "Memory to archive.",
+      source: "mcp-test",
+    });
+
+    const active = await handlers.approve_memory({ id: draft.frontmatter.id });
+    expect(active.frontmatter.status).toBe("active");
+
+    const archived = await handlers.archive_memory({ id: active.frontmatter.id });
+    expect(archived.frontmatter.status).toBe("archived");
     handlers.close();
   });
 });
