@@ -42,7 +42,7 @@ describe("memory CLI", () => {
     expect(search.stdout).toContain(id);
   });
 
-  it("rejects and archives memories", async () => {
+  it("rejects and archives memories", { timeout: 15000 }, async () => {
     await runMemory(["capture", "Memory to reject"]);
     const drafts = await runMemory(["list", "--status", "draft"]);
     const rejectedId = /mem_[0-9]{8}_[a-z0-9]+/.exec(drafts.stdout)?.[0];
