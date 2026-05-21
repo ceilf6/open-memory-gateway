@@ -1,3 +1,4 @@
+import { InvalidMemoryTransitionError, MemoryError, MemoryNotFoundError } from "./errors";
 import { hashMemoryContent } from "./hash";
 import { createMemoryId } from "./ids";
 import { MarkdownMemoryStore } from "./markdown-store";
@@ -9,6 +10,13 @@ import {
   type UpdateMemoryInput,
 } from "./schema";
 import { SQLiteMemoryIndex, type IndexedMemoryRow } from "./sqlite-index";
+
+const VALID_TRANSITIONS: Record<MemoryStatus, MemoryStatus[]> = {
+  draft: ["active", "rejected"],
+  active: ["archived"],
+  archived: [],
+  rejected: [],
+};
 
 export interface MemoryServiceOptions {
   rootDir: string;
@@ -29,7 +37,7 @@ export class MemoryService {
   async capture(input: CaptureMemoryInput): Promise<MemoryRecord> {
     const content = input.content.trim();
     if (!content) {
-      throw new Error("Memory content is required");
+      throw new MemoryError("Memory content is required", "VALIDATION_ERROR");
     }
 
     const currentTime = this.now();
@@ -56,10 +64,19 @@ export class MemoryService {
   }
 
   async update(id: string, input: UpdateMemoryInput): Promise<MemoryRecord> {
-    const existing = await this.store.read(id);
+    const existing = await this.readOrThrowNotFound(id);
     const content = input.content === undefined ? existing.content : input.content.trim();
     if (!content) {
-      throw new Error("Memory content is required");
+      throw new MemoryError("Memory content is required", "VALIDATION_ERROR");
+    }
+
+    const currentStatus = existing.frontmatter.status;
+    const newStatus = input.status ?? currentStatus;
+    if (newStatus !== currentStatus) {
+      const allowed = VALID_TRANSITIONS[currentStatus];
+      if (!allowed.includes(newStatus)) {
+        throw new InvalidMemoryTransitionError(currentStatus, newStatus);
+      }
     }
 
     const updated: MemoryRecord = {
@@ -142,5 +159,16 @@ export class MemoryService {
       contentHash: indexed?.contentHash ?? record.contentHash,
       possibleDuplicate: indexed?.possibleDuplicate ?? false,
     };
+  }
+
+  private async readOrThrowNotFound(id: string): Promise<MemoryRecord> {
+    try {
+      return await this.store.read(id);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Memory not found")) {
+        throw new MemoryNotFoundError(id);
+      }
+      throw error;
+    }
   }
 }

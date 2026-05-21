@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { InvalidMemoryTransitionError, MemoryError, MemoryNotFoundError } from "../src/errors";
 import { MemoryService } from "../src/memory-service";
 import { SQLiteMemoryIndex } from "../src/sqlite-index";
 
@@ -143,6 +144,7 @@ describe("MemoryService", () => {
   it("rejects empty capture content", async () => {
     const service = createService();
 
+    await expect(service.capture({ content: "   " })).rejects.toThrow(MemoryError);
     await expect(service.capture({ content: "   " })).rejects.toThrow("Memory content is required");
   });
 
@@ -150,6 +152,7 @@ describe("MemoryService", () => {
     const service = createService();
     const draft = await service.capture({ content: "Keep existing content." });
 
+    await expect(service.update(draft.frontmatter.id, { content: "   " })).rejects.toThrow(MemoryError);
     await expect(service.update(draft.frontmatter.id, { content: "   " })).rejects.toThrow(
       "Memory content is required",
     );
@@ -184,5 +187,25 @@ Malformed memory.
 
     const results = await service.search("Survive failed");
     expect(results).toHaveLength(1);
+  });
+
+  it("throws MemoryNotFoundError when updating a non-existent memory", async () => {
+    const service = createService();
+
+    await expect(service.update("mem_20260520_abc123", { content: "new" })).rejects.toThrow(MemoryNotFoundError);
+    await expect(service.update("mem_20260520_abc123", { content: "new" })).rejects.toThrow("Memory not found");
+  });
+
+  it("throws InvalidMemoryTransitionError for invalid status transitions", async () => {
+    const service = createService();
+    const draft = await service.capture({ content: "Test transition." });
+    const active = await service.approve(draft.frontmatter.id);
+
+    await expect(service.update(active.frontmatter.id, { status: "draft" })).rejects.toThrow(
+      InvalidMemoryTransitionError,
+    );
+    await expect(service.update(active.frontmatter.id, { status: "rejected" })).rejects.toThrow(
+      InvalidMemoryTransitionError,
+    );
   });
 });
