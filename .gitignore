@@ -9,3 +9,4 @@ memory/.index
 *.sqlite-shm
 *.sqlite-wal
 .DS_Store
+.claude/*.local.*
