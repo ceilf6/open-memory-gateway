@@ -10,3 +10,4 @@ memory/.index
 *.sqlite-wal
 .DS_Store
 .claude/*.local.*
+.codegraphcontext/
